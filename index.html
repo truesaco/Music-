@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Riff · AI Music Studio</title>
+  <meta name="description" content="Turn an idea into a finished song in seconds. A studio for SunoAPI: generate, extend, cover, remix, split stems and sing along." />
+  <meta name="theme-color" content="#0c0a12" media="(prefers-color-scheme: dark)" />
+  <meta name="theme-color" content="#f7f5fb" media="(prefers-color-scheme: light)" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <script>
+    // Apply theme before first paint to avoid a flash.
+    (function () {
+      var pref = "system";
+      try { pref = localStorage.getItem("riff.theme") || "system"; } catch (e) {}
+      var dark = pref === "dark" || (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      document.documentElement.dataset.theme = dark ? "dark" : "light";
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ============ KEY GATE ============ -->
+  <section id="gate" class="gate" hidden>
+    <div class="gate-bg" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="gate-card">
+      <div class="brand brand-lg"><span class="brand-mark" aria-hidden="true"></span><span>Riff</span></div>
+      <h1 class="gate-title">Turn an idea into a <span class="grad">finished song</span> in seconds.</h1>
+      <p class="gate-sub">Riff is a studio for SunoAPI. Bring your API key, describe a vibe, and listen back in about 30 seconds.</p>
+
+      <form id="gateForm" class="gate-form" autocomplete="off">
+        <label class="field">
+          <span class="lbl">SunoAPI key</span>
+          <div class="input-wrap">
+            <input id="gateKey" type="password" placeholder="Paste your API key" spellcheck="false" autocomplete="off" required />
+            <button type="button" class="icon-btn ghost" id="gateReveal" aria-label="Show key"></button>
+          </div>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="gateRemember" checked />
+          <span>Remember on this device</span>
+        </label>
+        <p class="form-error" id="gateError" role="alert" hidden></p>
+        <button class="btn btn-primary btn-lg btn-block" id="gateSubmit" type="submit">Unlock the studio</button>
+        <p class="gate-help">No key yet? <a href="https://sunoapi.org/api-key" target="_blank" rel="noopener">Get one at sunoapi.org →</a></p>
+      </form>
+
+      <ol class="gate-steps">
+        <li><b>1</b><span>Paste your key</span></li>
+        <li><b>2</b><span>Describe a song</span></li>
+        <li><b>3</b><span>Listen, remix, share</span></li>
+      </ol>
+      <p class="gate-privacy">Your key stays in this browser. It's sent only to SunoAPI when you make a request.</p>
+    </div>
+  </section>
+
+  <!-- ============ APP ============ -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"></span><span>Riff</span></div>
+      <nav class="tabs" role="tablist">
+        <button class="tab active" data-view="create" role="tab">Create</button>
+        <button class="tab" data-view="library" role="tab">Library <span class="count" id="libCount">0</span></button>
+      </nav>
+      <div class="top-actions">
+        <button class="credits" id="creditsBtn" title="Remaining credits, click to refresh">
+          <span class="dot"></span><span id="creditsVal">—</span><span class="credits-lbl">credits</span>
+        </button>
+        <div class="seg theme-seg" id="themeSeg" role="radiogroup" aria-label="Theme">
+          <button data-theme-opt="light" aria-label="Light theme" title="Light"></button>
+          <button data-theme-opt="dark" aria-label="Dark theme" title="Dark"></button>
+          <button data-theme-opt="system" aria-label="System theme" title="System"></button>
+        </div>
+        <button class="icon-btn" id="settingsBtn" aria-label="Settings" title="Settings"></button>
+      </div>
+    </header>
+
+    <main>
+      <!-- CREATE -->
+      <section class="view" id="view-create">
+        <div class="create-grid">
+          <div class="panel composer" id="composer">
+            <div class="mode-tabs" id="modeTabs" role="tablist"></div>
+            <div class="mode-intro" id="modeIntro"></div>
+            <div class="model-row" id="modelRow"></div>
+            <div class="mode-body" id="modeBody"></div>
+            <div class="composer-foot">
+              <div class="foot-meta" id="footMeta"></div>
+              <button class="btn btn-primary btn-lg" id="generateBtn"></button>
+            </div>
+          </div>
+          <aside class="side">
+            <div class="panel">
+              <div class="panel-head"><h3>Activity</h3><span class="muted small" id="activityHint"></span></div>
+              <div id="activity" class="activity"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h3>Latest tracks</h3><button class="link-btn" data-goto="library">See all</button></div>
+              <div id="latest" class="latest"></div>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- LIBRARY -->
+      <section class="view" id="view-library" hidden>
+        <div class="lib-head">
+          <div>
+            <h2>Your library</h2>
+            <p class="muted">Every track you make lives here, on this device.</p>
+          </div>
+          <div class="lib-tools">
+            <label class="search"><span class="search-ic"></span><input id="libSearch" type="search" placeholder="Search titles, styles, lyrics" /></label>
+            <div class="seg" id="libFilter">
+              <button data-filter="all" class="on">All</button>
+              <button data-filter="fav">Favorites</button>
+              <button data-filter="vocal">Vocal</button>
+              <button data-filter="instr">Instrumental</button>
+            </div>
+          </div>
+        </div>
+        <div id="libGrid" class="lib-grid"></div>
+      </section>
+    </main>
+
+    <!-- PLAYER -->
+    <div class="player" id="player" hidden>
+      <div class="pl-track">
+        <img id="plCover" alt="" />
+        <div class="pl-meta">
+          <div class="pl-title" id="plTitle"></div>
+          <div class="pl-sub" id="plSub"></div>
+        </div>
+      </div>
+      <div class="pl-center">
+        <div class="pl-ctrls">
+          <button class="icon-btn ghost" id="plPrev" aria-label="Previous"></button>
+          <button class="play-btn" id="plPlay" aria-label="Play"></button>
+          <button class="icon-btn ghost" id="plNext" aria-label="Next"></button>
+        </div>
+        <div class="pl-seek">
+          <span id="plCur">0:00</span>
+          <input type="range" id="plSeek" min="0" max="1000" value="0" aria-label="Seek" />
+          <span id="plDur">0:00</span>
+        </div>
+      </div>
+      <div class="pl-right">
+        <button class="icon-btn ghost" id="plLyrics" title="Sing-along lyrics" aria-label="Sing-along lyrics"></button>
+        <button class="icon-btn ghost" id="plInfo" title="Track details" aria-label="Track details"></button>
+        <div class="vol"><span id="plVolIc"></span><input type="range" id="plVol" min="0" max="1" step="0.01" value="0.9" aria-label="Volume" /></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Drawer (track details) -->
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+  <!-- Modal -->
+  <div class="modal-wrap" id="modalWrap" hidden>
+    <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+  </div>
+
+  <!-- Karaoke -->
+  <div class="karaoke" id="karaoke" hidden></div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+  <audio id="audio" preload="metadata"></audio>
+
+  <script src="app.js"></script>
+</body>
+</html>
