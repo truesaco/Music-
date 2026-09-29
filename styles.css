@@ -252,7 +252,7 @@ main { padding: 24px 24px calc(var(--player-h) + 40px); max-width: 1320px; margi
 /* ================= Create ================= */
 .create-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; align-items: start; }
 @media (max-width: 1020px) { .create-grid { grid-template-columns: minmax(0, 1fr); } }
-.side { display: grid; gap: 20px; position: sticky; top: 84px; }
+.side { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; position: sticky; top: 84px; min-width: 0; }
 @media (max-width: 1020px) { .side { position: static; } }
 
 .composer { padding: 0; overflow: hidden; }

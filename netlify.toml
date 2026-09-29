@@ -2,14 +2,8 @@
   publish = "."
   functions = "netlify/functions"
 
-# Same-origin proxies to SunoAPI so the browser never hits CORS limits.
-# The user's API key travels in the Authorization header and is never stored server-side.
-[[redirects]]
-  from = "/suno/*"
-  to = "https://api.sunoapi.org/:splat"
-  status = 200
-  force = true
-
+# /suno/* is served by netlify/functions/suno-proxy.mjs (same-origin, no CORS issues).
+# File uploads are proxied straight through to the SunoAPI upload host.
 [[redirects]]
   from = "/suno-upload/*"
   to = "https://sunoapiorg.redpandaai.co/:splat"

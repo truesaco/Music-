@@ -245,24 +245,25 @@ async function rawFetch(kind, path, opts, allowFallback = true) {
   try {
     res = await fetch(base + path, opts);
   } catch (e) {
-    if (state.conn === "proxy" && allowFallback) return switchToDirect(kind, path, opts);
-    if (state.conn === "direct" && location.protocol !== "file:" && allowFallback) {
-      state.conn = "proxy"; store.set("conn", "proxy");
-      return rawFetch(kind, path, opts, false);
-    }
-    throw new ApiError("Couldn't reach SunoAPI. Check your connection and try again.", 0);
+    if (allowFallback && location.protocol !== "file:") return switchConn(kind, path, opts);
+    throw new ApiError(state.conn === "direct"
+      ? "Your browser blocked the direct request to SunoAPI. Open Riff from its Netlify site so requests go through the built-in proxy."
+      : "Couldn't reach SunoAPI. Check your connection and try again.", 0);
   }
-  const ct = res.headers.get("content-type") || "";
-  if (!ct.includes("json")) {
-    // A proxy that isn't configured (e.g. static host without Netlify rewrites) returns HTML.
-    if (state.conn === "proxy" && allowFallback) return switchToDirect(kind, path, opts);
-    throw new ApiError(friendly(res.status) || `Unexpected response (${res.status})`, res.status);
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+  if (!json || typeof json !== "object") {
+    // A proxy that isn't configured (e.g. a static host without Netlify functions) returns HTML.
+    if (state.conn === "proxy" && allowFallback && (res.status === 404 || /^\s*</.test(text))) return switchConn(kind, path, opts);
+    const snippet = text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+    throw new ApiError(`${FRIENDLY[res.status] || "Unexpected response from SunoAPI"} (HTTP ${res.status}${snippet ? `: ${snippet}` : ""})`, res.status);
   }
-  const json = await res.json();
   return { res, json };
 }
-function switchToDirect(kind, path, opts) {
-  state.conn = "direct"; store.set("conn", "direct");
+function switchConn(kind, path, opts) {
+  state.conn = state.conn === "proxy" ? "direct" : "proxy";
+  store.set("conn", state.conn);
   return rawFetch(kind, path, opts, false);
 }
 
@@ -281,8 +282,8 @@ async function api(path, { method = "GET", body, query, key } = {}) {
   if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(cleanBody(body)); }
   const qs = query ? "?" + new URLSearchParams(query) : "";
   const { res, json } = await rawFetch("api", path + qs, opts);
-  const code = json.code ?? res.status;
-  if (code !== 200) throw new ApiError(friendly(code, json.msg), code, json.data);
+  const code = Number(json.code ?? res.status);
+  if (code !== 200) throw new ApiError(friendly(code, json.msg || json.message), code, json.data);
   return json.data;
 }
 
@@ -400,7 +401,7 @@ function notify(title, body) {
    Key gate
    ===================================================================== */
 function loadKey() {
-  try { return localStorage.getItem("riff.apiKey") || sessionStorage.getItem("riff.apiKey"); } catch { return null; }
+  try { return cleanKey(localStorage.getItem("riff.apiKey") || sessionStorage.getItem("riff.apiKey")) || null; } catch { return null; }
 }
 function saveKey(key, remember) {
   try {
@@ -408,6 +409,8 @@ function saveKey(key, remember) {
     (remember ? localStorage : sessionStorage).setItem("riff.apiKey", key);
   } catch {}
 }
+// Accept keys pasted with a "Bearer " prefix, quotes or stray whitespace.
+const cleanKey = (k) => String(k || "").replace(/^\s*(authorization:\s*)?bearer\s+/i, "").replace(/["'`\s]/g, "");
 function showGate(msg) {
   $("#app").hidden = true;
   $("#gate").hidden = false;
@@ -433,7 +436,7 @@ function initGate() {
   };
   $("#gateForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const key = $("#gateKey").value.trim();
+    const key = cleanKey($("#gateKey").value);
     const btn = $("#gateSubmit");
     const err = $("#gateError");
     if (!key) return;
@@ -448,7 +451,10 @@ function initGate() {
       $("#gateKey").value = "";
       enterApp(true);
     } catch (ex) {
-      err.textContent = ex.code === 401 ? "That key didn't work. Copy it again from sunoapi.org/api-key." : ex.message;
+      err.textContent = ex.code === 401
+        ? `SunoAPI rejected this key${ex.message && ex.message !== FRIENDLY[401] ? ` (${ex.message})` : ""}. Copy it again from sunoapi.org/api-key.`
+        : ex.message;
+      console.warn("[Riff] key check failed", { code: ex.code, message: ex.message, connection: state.conn });
       err.hidden = false;
     } finally {
       btn.disabled = false;
@@ -1870,7 +1876,7 @@ async function toolRecover(t) {
     for (let i = 0; i < 40; i++) {
       await sleep(2500);
       const { res, json } = await rawFetch("api", `/api/v1/suno/recovery/record-info?task_id=${encodeURIComponent(rid)}`, { headers: { Authorization: "Bearer " + state.key } });
-      const code = json.code ?? res.status;
+      const code = Number(json.code ?? res.status);
       if (code === 201) continue;
       if (code !== 200) throw new ApiError(json.msg || "Recovery failed.");
       const rows = Array.isArray(json.data) ? json.data : json.data?.sunoData || json.data?.data || [];
